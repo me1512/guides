@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where([class=dark], [class=dark] *));
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+.dark {
+  --background: #0a0a0a;
+  --foreground: #ededed;
+  --nextra-primary-hue: 204deg;
+  --nextra-primary-saturation: 100%;
+  --nextra-primary-lightness: 55%;
+  --nextra-bg: 17, 17, 17;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+}
