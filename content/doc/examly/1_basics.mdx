@@ -1,0 +1,1451 @@
+---
+title: Basic Setups
+---
+
+# Basic Setups
+
+## Key Features of Examly
+
+Examly is a powerful platform designed to enhance the learning experience for students and educators alike. Here are some of its key features:
+
+*   **Interactive Learning Modules**: Examly offers a variety of interactive modules that engage students and facilitate active learning.
+*   **Comprehensive Assessment Tools**: The platform includes robust assessment tools that allow educators to create, distribute, and grade exams efficiently.
+*   **Real-time Analytics**: Educators can access real-time analytics to track student progress and identify areas for improvement.
+*   **Customizable Learning Paths**: Examly enables the creation of personalized learning paths tailored to individual student needs.
+*   **Collaboration Features**: The platform supports collaboration among students and teachers, fostering a community of learning.
+
+## Getting Started with Examly
+
+To begin using Examly, follow these steps:
+
+1.  **Sign Up**: Create an account on the Examly website.
+2.  **Explore the Dashboard**: Familiarize yourself with the user-friendly dashboard and its features.
+3.  **Create Your First Course**: Use the course creation tools to design your first interactive learning module.
+4.  **Invite Students**: Share your course with students and encourage them to engage with the content.
+5.  **Monitor Progress**: Utilize the analytics tools to track student progress and make data-driven decisions.
+
+## Conclusion
+
+Examly is revolutionizing the way we approach education. With its innovative features and user-friendly interface, it empowers educators to create engaging learning experiences that drive student success.
+
+## Learn More
+
+To dive deeper into Examly's capabilities, explore the following resources:
+
+*   [Official Documentation](https://docs.examly.com)
+*   [Community Forum](https://community.examly.com)
+*   [Webinars and Tutorials](https://www.examly.com/webinars)
+
+
+## Create the app
+
+create the app with below options
+![image](@/public/images/create_app.webp)
+
+```sh
+npx create-next-app@latest
+cd examly
+npm run dev
+```
+
+## Install basic dependencies
+
+for shadcn/ui use `Slate` color
+```sh
+npx shadcn@latest init
+npm i lucide-react framer-motion clsx tailwind-merge react-hook-form zod zustand @tanstack/react-query firebase @hookform/resolvers
+npm i -D depcheck prettier-plugin-tailwindcss
+```
+
+### add for depcheck
+```json copy filename=".depcheckrc"
+{
+  "ignores": [
+    "eslint-config-next",
+    "typescript",
+    "@types/*",
+
+    "postcss",
+    "tailwindcss",
+    "autoprefixer",
+
+    "jest",
+    "@testing-library/*",
+
+    "sharp"
+  ],
+  "ignore-patterns": [
+    "dist",
+    ".next",
+    ".vercel"
+  ]
+}
+```
+
+```json copy filename=".prettierrc"
+{
+  "plugins": ["prettier-plugin-tailwindcss"]
+}
+```
+
+```env copy filename=".env"
+# .env
+
+NEXT_PUBLIC_APP_NAME="..."
+NEXT_PUBLIC_APP_VERSION="..."
+NEXT_PUBLIC_FIREBASE_API_KEY="..."
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN="..."
+NEXT_PUBLIC_FIREBASE_PROJECT_ID="..."
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET="..."
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID="..."
+NEXT_PUBLIC_FIREBASE_APP_ID="..."
+NEXT_PUBLIC__FIREBASE_MEASUREMENT_ID="..."
+```
+  *The `NEXT_PUBLIC_` prefix is essential to expose these variables to the browser.*
+
+
+update `package.json` scripts
+
+```json copy file="package.json"
+// package.json
+{
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "check:deps": "depcheck",
+    "gitpush": "git add . && git commit -m \"$(date +'%Y-%m-%d %H:%M:%S')\" && git push"
+  }
+}
+```
+
+### Add Dark mode toggle
+
+#### Create store
+
+```tsx copy filename="stores/themeStore.ts"
+import { create } from "zustand";
+
+export type Theme = "light" | "dark" | "system";
+
+interface ThemeState {
+  theme: Theme;
+  setTheme: (theme: Theme) => void;
+  hydrated: boolean;
+  setHydrated: (hydrated: boolean) => void;
+}
+
+export const useThemeStore = create<ThemeState>()((set, get) => ({
+  // NEVER access localStorage in initial state - always use default
+  theme: "system", // Default value, no localStorage access
+  hydrated: false,
+
+  setTheme: (newTheme: Theme) => {
+    set({ theme: newTheme });
+    // Only access localStorage in actions (client-side)
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem("theme-storage", newTheme);
+      } catch (error) {
+        console.warn("Failed to save theme:", error);
+      }
+    }
+  },
+
+  setHydrated: (hydrated: boolean) => set({ hydrated }),
+}));
+
+// Client-side hydration function
+export const hydrateThemeStore = () => {
+  if (typeof window === "undefined") return;
+
+  try {
+    const storedTheme = localStorage.getItem("theme-storage");
+    if (storedTheme && ["light", "dark", "system"].includes(storedTheme)) {
+      useThemeStore.setState({
+        theme: storedTheme as Theme,
+        hydrated: true,
+      });
+    } else {
+      useThemeStore.setState({ hydrated: true });
+    }
+  } catch (error) {
+    console.warn("Failed to load theme:", error);
+    useThemeStore.setState({ hydrated: true });
+  }
+};
+```
+
+```tsx copy filename="provider/ThemeProvider.tsx"
+"use client";
+
+import { useEffect } from "react";
+import { useThemeStore, hydrateThemeStore, Theme } from "@/stores/themeStore";
+
+export default function ThemeProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const { theme, hydrated } = useThemeStore();
+
+  // Hydrate theme from localStorage on mount
+  useEffect(() => {
+    // Add class to disable transitions during initial load
+    document.documentElement.classList.add("no-transition");
+
+    hydrateThemeStore();
+
+    // Re-enable transitions after a short delay
+    setTimeout(() => {
+      document.documentElement.classList.remove("no-transition");
+    }, 50);
+  }, []);
+
+  // Apply theme when hydrated or theme changes
+  useEffect(() => {
+    if (!hydrated) return;
+
+    const applyTheme = (theme: Theme) => {
+      const isDark =
+        theme === "dark" ||
+        (theme === "system" &&
+          window.matchMedia("(prefers-color-scheme: dark)").matches);
+
+      if (isDark) {
+        document.documentElement.classList.add("dark");
+      } else {
+        document.documentElement.classList.remove("dark");
+      }
+    };
+
+    applyTheme(theme);
+
+    // Listen for system theme changes
+    if (theme === "system") {
+      const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+      const handleChange = () => applyTheme("system");
+
+      mediaQuery.addEventListener("change", handleChange);
+      return () => mediaQuery.removeEventListener("change", handleChange);
+    }
+  }, [theme, hydrated]);
+
+  return <>{children}</>;
+}
+```
+
+#### No-Flicker Script in App Router Layout
+
+```tsx copy filename="config/fonts.ts"
+import { Geist, Geist_Mono } from "next/font/google";
+
+export const fontSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+export const fontMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+```
+
+```tsx copy filename="app/layout.tsx"
+import type { Metadata } from "next";
+import "./globals.css";
+import ThemeProvider from "@/provider/ThemeProvider";
+import NavItems from "@/components/navigation/Nav";
+import Footer from "@/components/navigation/Footer";
+import { fontSans } from "@/config/fonts";
+import { fontMono } from "@/config/fonts";
+import { cn } from "@/lib/utils";
+
+export const metadata: Metadata = {
+  title: "Examly App",
+  description:
+    "Your personal exam coach—generating quizzes, analyzing mistakes, and optimizing study time for peak performance.",
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* Minimal inline script to prevent flash - only sets classes */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              try {
+                const theme = localStorage.getItem("theme-storage") || "system";
+                const dark = theme === "dark" || (theme === "system" && matchMedia("(prefers-color-scheme:dark)").matches);
+                if (dark) document.documentElement.classList.add("dark");
+              } catch(e) {
+                if (matchMedia("(prefers-color-scheme:dark)").matches) document.documentElement.classList.add("dark");
+              }
+            `,
+          }}
+        />
+      </head>
+      <body className={cn("antialiased", fontSans.variable, fontMono.variable)}>
+        {/* No script - let React handle everything */}
+        <ThemeProvider>
+          <NavItems />
+          {children}
+          <Footer />
+        </ThemeProvider>
+      </body>
+    </html>
+  );
+}
+```
+
+#### Theme Toggle Component
+
+```tsx copy filename="app/components/ui/ThemeToggle.tsx"
+"use client";
+
+import { useThemeStore, Theme } from "@/stores/themeStore";
+import { Sun, Moon, Monitor, ChevronDown } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+
+export default function ThemeToggle() {
+  const { theme, setTheme, hydrated } = useThemeStore();
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const options = [
+    { value: "light" as Theme, icon: <Sun size={16} />, label: "Light" },
+    { value: "dark" as Theme, icon: <Moon size={16} />, label: "Dark" },
+    { value: "system" as Theme, icon: <Monitor size={16} />, label: "System" },
+  ];
+
+  const currentOption = options.find((opt) => opt.value === theme);
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target as Node)
+      ) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleMouseEnter = () => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+    setIsOpen(true);
+  };
+
+  const handleMouseLeave = () => {
+    timeoutRef.current = setTimeout(() => {
+      setIsOpen(false);
+    }, 300);
+  };
+
+  const handleOptionClick = (value: Theme) => {
+    setTheme(value);
+    setIsOpen(false);
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+  };
+
+  // Show loading state until hydrated
+  if (!hydrated) {
+    return (
+      <div className="h-10 w-32 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700" />
+    );
+  }
+
+  return (
+    <div
+      ref={dropdownRef}
+      className="relative"
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center gap-2 rounded-lg bg-gray-200 px-3 py-2 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
+        aria-expanded={isOpen}
+      >
+        {currentOption?.icon}
+        <span className="text-sm">{currentOption?.label}</span>
+        <ChevronDown
+          size={16}
+          className={`transition-transform ${isOpen ? "rotate-180" : ""}`}
+        />
+      </button>
+
+      {isOpen && (
+        <div
+          className="absolute z-10 mt-1 w-full rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800"
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
+        >
+          {options.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => handleOptionClick(opt.value)}
+              className={`flex w-full items-center gap-2 px-3 py-2 text-left text-gray-700 dark:text-white ${
+                theme === opt.value
+                  ? "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300"
+                  : "hover:bg-gray-100 dark:hover:bg-gray-700"
+              }`}
+            >
+              {opt.icon}
+              <span>{opt.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+```tsx copy filename="app/globals.css"
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:where(.dark, .dark *)); /* dark mode styles are applied when an element has the .dark class OR when it's a descendant of an element with .dark class */
+
+/* Color scheme handled by CSS classes */
+:root {
+  color-scheme: light;
+}
+
+:root.dark {
+  color-scheme: dark;
+}
+
+/* Smooth transitions for theme changes (not initial load) */
+*,
+*::before,
+*::after {
+  transition-property: color, background-color, border-color;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
+/* Disable transitions on initial page load */
+.no-transition * {
+  transition: none !important;
+}
+```
+
+```tsx copy filename="next.config.ts"
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
+  /* config options here */
+  reactStrictMode: true,
+};
+
+export default nextConfig;
+```
+
+### Header and Footer
+
+#### Header Component
+
+```tsx copy filename="components/navigation/Nav.tsx" 
+// components/navigation/Nav.tsx
+"use client";
+import { motion } from "framer-motion";
+import { BookOpen, Menu, X } from "lucide-react";
+import { useState } from "react";
+import ThemeToggle from "@/components/ui/ThemeToggle";
+
+export const NavItems = () => {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  return (
+    <nav className="fixed z-50 w-full border-b border-gray-100 bg-white backdrop-blur-sm dark:border-gray-800 dark:bg-gray-900/95">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between py-4">
+          <motion.div
+            className="flex items-center space-x-2"
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.6 }}
+          >
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-r from-blue-500 to-purple-600">
+              <BookOpen className="h-5 w-5 text-white" />
+            </div>
+            <span className="text-xl font-bold">Examly</span>
+          </motion.div>
+
+          {/* Desktop Menu */}
+          <div className="hidden items-center space-x-8 md:flex">
+            <a
+              href="#features"
+              className="text-gray-600 transition-colors hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
+            >
+              Features
+            </a>
+            <a
+              href="#getting-started"
+              className="text-gray-600 transition-colors hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
+            >
+              Getting Started
+            </a>
+            <a
+              href="#pricing"
+              className="text-gray-600 transition-colors hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
+            >
+              Pricing
+            </a>
+            <motion.button
+              className="rounded-lg bg-gradient-to-r from-blue-600 to-purple-600 px-6 py-2 font-medium text-white transition-all duration-300 hover:from-blue-700 hover:to-purple-700 hover:shadow-lg"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              Login
+            </motion.button>
+            <ThemeToggle />
+          </div>
+
+          {/* Mobile Menu Button */}
+          <button
+            className="text-gray-600 md:hidden dark:text-gray-300"
+            onClick={() => setIsMenuOpen(!isMenuOpen)}
+          >
+            {isMenuOpen ? (
+              <X className="h-6 w-6" />
+            ) : (
+              <Menu className="h-6 w-6" />
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* Mobile Menu */}
+      {isMenuOpen && (
+        <motion.div
+          className="border-t border-gray-100 bg-white md:hidden dark:border-gray-700 dark:bg-gray-800"
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <div className="space-y-4 px-4 py-4">
+            <a
+              href="#features"
+              className="block py-2 text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
+            >
+              Features
+            </a>
+            <a
+              href="#getting-started"
+              className="block py-2 text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
+            >
+              Getting Started
+            </a>
+            <a
+              href="#pricing"
+              className="block py-2 text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
+            >
+              Pricing
+            </a>
+            <button className="w-full rounded-lg bg-gradient-to-r from-blue-600 to-purple-600 px-6 py-2 text-white">
+              Login
+            </button>
+            <ThemeToggle />
+          </div>
+        </motion.div>
+      )}
+    </nav>
+  );
+};
+
+export default NavItems;
+```
+
+```tsx copy filename="components/navigation/Footer.tsx" 
+import { BookOpen } from "lucide-react";
+import React from "react";
+
+const Footer = () => {
+  return (
+    <>
+      {" "}
+      <footer className="border-t border-gray-200 bg-white px-4 py-12 sm:px-6 lg:px-8 dark:border-gray-800 dark:bg-gray-900">
+        <div className="mx-auto max-w-7xl">
+          <div className="flex flex-col items-center justify-between md:flex-row">
+            <div className="mb-4 flex items-center space-x-2 md:mb-0">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-r from-blue-500 to-purple-600 shadow-lg">
+                <BookOpen className="h-6 w-6 text-white" />
+              </div>
+              <span className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-2xl font-bold text-transparent">
+                Examly
+              </span>
+            </div>
+
+            <div className="flex space-x-6 text-sm font-medium text-gray-600 dark:text-gray-300">
+              <a
+                href="privacy"
+                className="transition-colors hover:text-blue-600 dark:hover:text-white"
+              >
+                Privacy Policy
+              </a>
+              <a
+                href="terms"
+                className="transition-colors hover:text-blue-600 dark:hover:text-white"
+              >
+                Terms of Service
+              </a>
+              <a
+                href="contact"
+                className="transition-colors hover:text-blue-600 dark:hover:text-white"
+              >
+                Contact
+              </a>
+            </div>
+          </div>
+
+          <div className="mt-8 border-t border-gray-200 pt-8 text-center text-gray-500 dark:border-gray-700 dark:text-gray-400">
+            <p className="font-medium">
+              &copy; {Date.now().toString().slice(2)} Examly. All rights
+              reserved. Empowering education through technology.
+            </p>
+          </div>
+        </div>
+      </footer>
+    </>
+  );
+};
+
+export default Footer;
+```
+
+### Not Found and error page
+
+```tsx copy filename="components/Error.tsx" 
+// components/Error.tsx
+"use client";
+
+import React from "react";
+import { motion } from "framer-motion";
+import { Button } from "./ui/button";
+import Link from "next/link";
+
+interface ErrorProps {
+  code?: number;
+  message?: string;
+}
+
+const defaultMessages: Record<number, string> = {
+  403: "You don't have permission to access this page.",
+  404: "The page you're looking for might have been moved or doesn't exist.",
+  500: "Something went wrong on our end. Please try again later.",
+};
+
+const Error: React.FC<ErrorProps> = ({ code, message }) => {
+  const errorCode = code ?? 404;
+  const errorMessage =
+    message ?? defaultMessages[errorCode] ?? "An unexpected error occurred.";
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-indigo-100 to-blue-200 px-4 py-12 dark:from-gray-900 dark:to-gray-800">
+      <motion.div
+        initial={{ opacity: 0, y: 30 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.7 }}
+        className="w-full max-w-2xl rounded-2xl border border-white/40 bg-white/30 p-8 text-center shadow-xl backdrop-blur-md sm:p-12 dark:border-white/10 dark:bg-white/5"
+      >
+        {/* Animated Error Code */}
+        <motion.div
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.6 }}
+          className="text-[6rem] font-extrabold text-indigo-300 sm:text-[8rem] dark:text-indigo-900/30"
+        >
+          {errorCode}
+        </motion.div>
+
+        {/* Heading */}
+        <motion.h1
+          initial={{ scale: 0.9, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ duration: 0.6, delay: 0.2 }}
+          className="mb-4 text-4xl font-bold text-gray-800 dark:text-white"
+        >
+          {errorCode === 404
+            ? " Not Found"
+            : errorCode === 403
+              ? "Access Denied"
+              : errorCode === 500
+                ? "Internal Server Error"
+                : "Oops!"}
+        </motion.h1>
+
+        {/* Description */}
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.5, delay: 0.4 }}
+          className="mx-auto mb-10 max-w-xl text-lg leading-relaxed text-gray-600 dark:text-gray-300"
+        >
+          {errorMessage}
+        </motion.p>
+
+        {/* Bouncing Dots */}
+        <div className="mb-10 flex justify-center gap-2">
+          {[...Array(3)].map((_, i) => (
+            <motion.div
+              key={i}
+              className="h-3 w-3 rounded-full bg-indigo-500 dark:bg-indigo-400"
+              initial={{ y: 0 }}
+              animate={{ y: [0, -10, 0] }}
+              transition={{
+                repeat: Infinity,
+                duration: 1,
+                delay: i * 0.2,
+              }}
+            />
+          ))}
+        </div>
+
+        {/* Action Buttons */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 1 }}
+          className="flex flex-col justify-center gap-4 sm:flex-row"
+        >
+          <Link href="/">
+            <Button className="px-6 py-3 text-lg shadow transition-all duration-300 hover:shadow-indigo-300/30 dark:hover:shadow-indigo-500/10">
+              Go Home
+            </Button>
+          </Link>
+          <Link href="/mock">
+            <Button
+              variant="outline"
+              className="border-indigo-500 px-6 py-3 text-lg text-indigo-600 transition-all hover:bg-indigo-100 dark:text-indigo-300 dark:hover:bg-indigo-900/30"
+            >
+              Practice Again
+            </Button>
+          </Link>
+        </motion.div>
+      </motion.div>
+    </div>
+  );
+};
+
+export default Error;
+```
+
+```tsx copy filename="app/error.tsx" 
+"use client";
+
+import Error from "@/components/Error";
+import React from "react";
+
+const ErrorPage = () => {
+  return (
+    <div>
+      <Error />
+    </div>
+  );
+};
+
+export default ErrorPage;
+```
+
+```tsx copy filename="components/NotFound.tsx" 
+// components/NotFound.tsx
+"use client";
+
+import { motion } from "framer-motion";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+
+const NotFound = () => {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 px-4 sm:px-6 dark:from-gray-800 dark:to-gray-900">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.6 }}
+        className="w-full max-w-3xl text-center"
+      >
+        {/* Animated 404 Text */}
+        <div className="relative mb-12">
+          <motion.span
+            initial={{ opacity: 0, y: -30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.2 }}
+            className="text-[10rem] font-bold text-indigo-200 sm:text-[12rem] md:text-[14rem] dark:text-indigo-900/30"
+          >
+            404
+          </motion.span>
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <motion.h1
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.4 }}
+              className="mb-4 text-4xl font-bold text-gray-800 sm:text-5xl md:text-6xl dark:text-white"
+            >
+              Page Not Found
+            </motion.h1>
+            <motion.div
+              initial={{ width: 0 }}
+              animate={{ width: "80%" }}
+              transition={{ duration: 0.8, delay: 0.6 }}
+              className="mx-auto h-1 rounded-full bg-indigo-500 dark:bg-indigo-400"
+            />
+          </div>
+        </div>
+
+        {/* Error Message */}
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.5, delay: 0.8 }}
+          className="mx-auto mb-12 max-w-2xl px-4 text-xl text-gray-600 dark:text-gray-300"
+        >
+          Oops! The page you&apos;re looking for might have been moved, removed,
+          or doesn&apos;t exist. Let&apos;s get you back on track.
+        </motion.p>
+
+        {/* Animated Elements */}
+        <div className="mb-12 flex justify-center gap-4">
+          {[...Array(3)].map((_, i) => (
+            <motion.div
+              key={i}
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{
+                duration: 0.5,
+                delay: 1 + i * 0.2,
+                type: "spring",
+                stiffness: 260,
+                damping: 20,
+              }}
+              className="h-4 w-4 rounded-full bg-indigo-500 dark:bg-indigo-400"
+            />
+          ))}
+        </div>
+
+        {/* Action Buttons */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 1.4 }}
+          className="flex flex-col justify-center gap-4 sm:flex-row"
+        >
+          <Link href="/">
+            <Button className="px-8 py-3 text-lg shadow-lg transition-shadow hover:shadow-indigo-200/50 dark:hover:shadow-indigo-500/10">
+              Return Home
+            </Button>
+          </Link>
+          <Link href="/mock">
+            <Button
+              variant="outline"
+              className="border-indigo-500 px-8 py-3 text-lg text-indigo-500 hover:bg-indigo-50 dark:text-indigo-300 dark:hover:bg-indigo-900/30"
+            >
+              Start Practicing
+            </Button>
+          </Link>
+        </motion.div>
+      </motion.div>
+    </div>
+  );
+};
+
+export default NotFound;
+```
+
+```tsx copy filename="app/not-found.tsx" 
+"use client";
+
+import NotFound from "@/components/NotFound";
+import React from "react";
+
+const NotFoundPage = () => {
+  return (
+    <>
+      <NotFound />
+    </>
+  );
+};
+
+export default NotFoundPage;
+```
+
+### Landing Page
+
+```ts copy filename="components/home/consts.ts" 
+import { BarChart3, BookOpen, Target, TrendingUp } from "lucide-react";
+
+export const features = [
+  {
+    icon: BookOpen,
+    title: "Interactive Learning Modules",
+    description:
+      "Engage students with dynamic, interactive content that makes learning memorable and effective.",
+  },
+  {
+    icon: BarChart3,
+    title: "Comprehensive Assessment Tools",
+    description:
+      "Create, distribute, and grade exams efficiently with our robust assessment platform.",
+  },
+  {
+    icon: TrendingUp,
+    title: "Real-time Analytics",
+    description:
+      "Track student progress instantly and identify improvement areas with powerful analytics.",
+  },
+  {
+    icon: Target,
+    title: "Customizable Learning Paths",
+    description:
+      "Create personalized learning journeys tailored to individual student needs and goals.",
+  },
+];
+
+export const steps = [
+  {
+    number: "01",
+    title: "Sign Up",
+    description:
+      "Create your account in minutes and join thousands of educators",
+  },
+  {
+    number: "02",
+    title: "Explore Dashboard",
+    description:
+      "Navigate our intuitive interface designed for seamless user experience",
+  },
+  {
+    number: "03",
+    title: "Create Content",
+    description: "Design engaging courses with our powerful creation tools",
+  },
+  {
+    number: "04",
+    title: "Invite Students",
+    description: "Share your courses and build your learning community",
+  },
+  {
+    number: "05",
+    title: "Track Progress",
+    description: "Monitor success with comprehensive analytics and insights",
+  },
+];
+```
+
+```tsx copy filename="components/home/CTA.tsx" 
+import { ArrowRight, CheckCircle } from "lucide-react";
+import React from "react";
+
+const CTA = () => {
+  return (
+    <>
+      {/* CTA Section */}
+      <section className="bg-gradient-to-r from-blue-100 to-purple-100 px-4 py-20 sm:px-6 lg:px-8 dark:from-blue-600/20 dark:to-purple-600/20">
+        <div className="mx-auto max-w-4xl text-center">
+          <div>
+            <h2 className="mb-6 text-4xl font-bold text-gray-900 md:text-5xl dark:text-white">
+              Ready to Transform Education?
+            </h2>
+            <p className="mx-auto mb-12 max-w-2xl text-xl text-gray-700 dark:text-gray-300">
+              Join thousands of educators who are already creating engaging,
+              effective learning experiences with Examly.
+            </p>
+
+            <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
+              <button className="flex items-center space-x-2 rounded-xl bg-gray-900 px-10 py-4 text-lg font-bold text-white shadow-xl transition-all duration-300 hover:scale-105 hover:bg-gray-800 hover:shadow-2xl dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100">
+                <span>Start Free Trial</span>
+                <ArrowRight className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="mt-12 flex items-center justify-center space-x-6 text-sm font-medium text-gray-600 dark:text-gray-300">
+              <div className="flex items-center space-x-2">
+                <CheckCircle className="h-5 w-5 text-green-500" />
+                <span>Free 14-day trial</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <CheckCircle className="h-5 w-5 text-green-500" />
+                <span>No credit card required</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <CheckCircle className="h-5 w-5 text-green-500" />
+                <span>Cancel anytime</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </>
+  );
+};
+
+export default CTA;
+```
+
+```tsx copy filename="components/home/Features.tsx" 
+import React from "react";
+import { features } from "@/components/home/consts";
+
+const Features = () => {
+  return (
+    <>
+      {/* Features Section */}
+      <section
+        id="features"
+        className="bg-white/70 px-4 py-20 backdrop-blur-sm sm:px-6 lg:px-8 dark:bg-gray-800/50"
+      >
+        <div className="mx-auto max-w-7xl">
+          <div className="mb-16 text-center">
+            <h2 className="mb-4 text-4xl font-bold text-gray-900 md:text-5xl dark:text-white">
+              Powerful Features for Modern Education
+            </h2>
+            <p className="mx-auto max-w-3xl text-lg text-gray-600 dark:text-gray-300">
+              Discover the tools that make Examly the preferred choice for
+              educators worldwide
+            </p>
+          </div>
+
+          <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-2">
+            {features.map((feature, index) => (
+              <div
+                key={index}
+                className="group rounded-2xl border border-gray-200 bg-white p-8 shadow-lg transition-all duration-300 hover:scale-105 hover:shadow-2xl dark:border-gray-700 dark:bg-gray-800"
+              >
+                <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-r from-blue-500 to-purple-600 shadow-lg transition-transform duration-300 group-hover:scale-110">
+                  <feature.icon className="h-8 w-8 text-white" />
+                </div>
+                <h3 className="mb-4 text-xl font-bold text-gray-900 dark:text-white">
+                  {feature.title}
+                </h3>
+                <p className="text-gray-600 dark:text-gray-300">
+                  {feature.description}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    </>
+  );
+};
+
+export default Features;
+```
+
+```tsx copy filename="components/home/GettingStarted.tsx" 
+import { ArrowRight } from "lucide-react";
+import React from "react";
+import { steps } from "@/components/home/consts";
+
+const GettingStarted = () => {
+  return (
+    <>
+      {/* Getting Started Section */}
+      <section
+        id="getting-started"
+        className="bg-white/70 px-4 py-20 backdrop-blur-sm sm:px-6 lg:px-8 dark:bg-gray-800/50"
+      >
+        <div className="mx-auto max-w-7xl">
+          <div className="mb-16 text-center">
+            <h2 className="mb-4 text-4xl font-bold text-gray-900 md:text-5xl dark:text-white">
+              Get Started in Minutes
+            </h2>
+            <p className="mx-auto max-w-3xl text-lg text-gray-600 dark:text-gray-300">
+              Follow our simple 5-step process to transform your educational
+              experience
+            </p>
+          </div>
+
+          <div className="space-y-8">
+            {steps.map((step, index) => (
+              <div
+                key={index}
+                className="flex items-start space-x-6 rounded-2xl border border-gray-200 bg-white p-6 shadow-lg transition-all duration-300 hover:scale-105 hover:shadow-xl dark:border-gray-700 dark:bg-gray-800"
+              >
+                <div className="flex-shrink-0">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-r from-blue-500 to-purple-600 text-lg font-bold text-white shadow-lg">
+                    {step.number}
+                  </div>
+                </div>
+                <div className="flex-1">
+                  <h3 className="mb-2 text-xl font-bold text-gray-900 dark:text-white">
+                    {step.title}
+                  </h3>
+                  <p className="text-gray-600 dark:text-gray-300">
+                    {step.description}
+                  </p>
+                </div>
+                <ArrowRight className="h-6 w-6 text-blue-500 transition-transform hover:scale-110" />
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-16 text-center">
+            <button className="inline-flex items-center space-x-2 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 px-12 py-4 text-lg font-bold text-white shadow-xl transition-all duration-300 hover:scale-105 hover:from-blue-700 hover:to-purple-700 hover:shadow-2xl">
+              <span>Begin Your Journey</span>
+              <ArrowRight className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
+      </section>
+    </>
+  );
+};
+
+export default GettingStarted;
+```
+
+```tsx copy filename="components/home/Hero.tsx" 
+import { ArrowRight, Play } from "lucide-react";
+import Image from "next/image";
+import React from "react";
+
+const Hero = () => {
+  return (
+    <>
+      {/* Hero Section */}
+      <section className="bg- relative px-4 pt-32 pb-20 sm:px-6 lg:px-8">
+        {/* Background Blurr */}
+        <div className="absolute inset-0 -z-[5] bg-black opacity-75"></div>
+        {/* Background image */}
+        <div className="absolute inset-0 -z-10">
+          <Image src="/hero.webp" alt="Hero Image" fill priority />
+        </div>
+        <div className="mx-auto max-w-7xl">
+          <div className="text-center">
+            <div className="mb-8">
+              <h1 className="mb-6 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-5xl font-extrabold text-transparent md:text-7xl">
+                Transform Education
+              </h1>
+              <h2 className="mb-6 text-3xl font-bold text-blue-400 md:text-4xl dark:text-gray-50">
+                with Intelligent Learning
+              </h2>
+            </div>
+
+            <p className="mx-auto mb-12 max-w-3xl text-xl leading-relaxed text-gray-50 dark:text-gray-300">
+              Empower educators and students with cutting-edge tools for
+              interactive learning, comprehensive assessments, and real-time
+              analytics that drive success.
+            </p>
+
+            <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
+              <button className="flex items-center space-x-2 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 px-8 py-4 text-lg font-bold text-white shadow-xl transition-all duration-300 hover:scale-105 hover:from-blue-700 hover:to-purple-700 hover:shadow-2xl">
+                <span>Start Free Trial</span>
+                <ArrowRight className="h-5 w-5" />
+              </button>
+
+              <button className="flex items-center space-x-2 rounded-xl border-2 border-gray-300 bg-white px-8 py-4 text-lg font-bold text-gray-800 shadow-lg transition-all duration-300 hover:scale-105 hover:border-blue-400 hover:bg-gray-50 hover:shadow-xl dark:border-gray-600 dark:bg-gray-800 dark:text-white dark:hover:bg-gray-700">
+                <Play className="h-5 w-5" />
+                <span>Watch Demo</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Decorative Elements */}
+          <div className="relative mt-20">
+            <div className="absolute top-10 left-10 h-24 w-24 animate-pulse rounded-full bg-blue-400/30 blur-xl" />
+            <div className="absolute top-20 right-20 h-32 w-32 animate-pulse rounded-full bg-purple-400/30 blur-xl" />
+            <div className="absolute bottom-10 left-1/2 h-20 w-20 animate-pulse rounded-full bg-pink-400/30 blur-xl" />
+          </div>
+        </div>
+      </section>
+    </>
+  );
+};
+
+export default Hero;
+```
+
+```tsx copy filename="components/home/Pricing.tsx" 
+import { CheckCircle, Star, Trophy } from "lucide-react";
+import React from "react";
+
+const Pricing = () => {
+  return (
+    <>
+      {/* Pricing Section */}
+      <section
+        id="pricing"
+        className="bg-gradient-to-br from-blue-50 to-purple-50 px-4 py-20 sm:px-6 lg:px-8 dark:from-gray-900 dark:to-gray-800"
+      >
+        <div className="mx-auto max-w-7xl">
+          <div className="mb-16 text-center">
+            <h2 className="mb-4 text-4xl font-bold text-gray-900 md:text-5xl dark:text-white">
+              Choose Your Plan
+            </h2>
+            <p className="mx-auto max-w-3xl text-lg text-gray-600 dark:text-gray-300">
+              Flexible pricing options designed to grow with your educational
+              needs
+            </p>
+          </div>
+
+          <div className="mx-auto grid max-w-6xl gap-8 md:grid-cols-3">
+            {/* Basic Plan */}
+            <div className="rounded-2xl border-2 border-gray-200 bg-white p-8 shadow-lg transition-all duration-300 hover:scale-105 hover:shadow-2xl dark:border-gray-700 dark:bg-gray-800">
+              <div className="text-center">
+                <h3 className="mb-4 text-2xl font-bold text-gray-900 dark:text-white">
+                  Basic
+                </h3>
+                <div className="mb-6">
+                  <span className="text-5xl font-bold text-gray-900 dark:text-white">
+                    ₹149
+                  </span>
+                  <span className="text-gray-600 dark:text-gray-400">
+                    /month
+                  </span>
+                </div>
+                <p className="mb-8 text-gray-600 dark:text-gray-300">
+                  Perfect for individual educators getting started
+                </p>
+
+                <ul className="mb-8 space-y-4 text-left">
+                  <li className="flex items-center space-x-3">
+                    <CheckCircle className="h-5 w-5 flex-shrink-0 text-green-500" />
+                    <span className="font-medium text-gray-700 dark:text-gray-300">
+                      Up to 10 students
+                    </span>
+                  </li>
+                  <li className="flex items-center space-x-3">
+                    <CheckCircle className="h-5 w-5 flex-shrink-0 text-green-500" />
+                    <span className="font-medium text-gray-700 dark:text-gray-300">
+                      5 interactive modules
+                    </span>
+                  </li>
+                  <li className="flex items-center space-x-3">
+                    <CheckCircle className="h-5 w-5 flex-shrink-0 text-green-500" />
+                    <span className="font-medium text-gray-700 dark:text-gray-300">
+                      Basic analytics
+                    </span>
+                  </li>
+                  <li className="flex items-center space-x-3">
+                    <CheckCircle className="h-5 w-5 flex-shrink-0 text-green-500" />
+                    <span className="font-medium text-gray-700 dark:text-gray-300">
+                      Email support
+                    </span>
+                  </li>
+                </ul>
+
+                <button className="w-full rounded-xl bg-gray-200 px-6 py-3 font-bold text-gray-800 transition-all duration-300 hover:scale-105 hover:bg-gray-300 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600">
+                  Start Free Trial
+                </button>
+              </div>
+            </div>
+
+            {/* Professional Plan - Featured */}
+            <div className="relative scale-105 rounded-2xl border-2 border-blue-500 bg-white p-8 shadow-2xl dark:bg-gray-800">
+              <div className="absolute -top-4 left-1/2 -translate-x-1/2 transform">
+                <div className="flex items-center space-x-2 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 px-6 py-2 shadow-lg">
+                  <Trophy className="h-4 w-4 text-white" />
+                  <span className="text-sm font-bold text-white">
+                    Most Popular
+                  </span>
+                </div>
+              </div>
+
+              <div className="text-center">
+                <h3 className="mb-4 text-2xl font-bold text-gray-900 dark:text-white">
+                  Professional
+                </h3>
+                <div className="mb-6">
+                  <span className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-5xl font-bold text-transparent">
+                    ₹349
+                  </span>
+                  <span className="text-gray-600 dark:text-gray-400">
+                    /month
+                  </span>
+                </div>
+                <p className="mb-8 text-gray-600 dark:text-gray-300">
+                  Ideal for schools and growing institutions
+                </p>
+
+                <ul className="mb-8 space-y-4 text-left">
+                  <li className="flex items-center space-x-3">
+                    <CheckCircle className="h-5 w-5 flex-shrink-0 text-green-500" />
+                    <span className="font-medium text-gray-700 dark:text-gray-300">
+                      Up to 50 students
+                    </span>
+                  </li>
+                  <li className="flex items-center space-x-3">
+                    <CheckCircle className="h-5 w-5 flex-shrink-0 text-green-500" />
+                    <span className="font-medium text-gray-700 dark:text-gray-300">
+                      Unlimited modules
+                    </span>
+                  </li>
+                  <li className="flex items-center space-x-3">
+                    <CheckCircle className="h-5 w-5 flex-shrink-0 text-green-500" />
+                    <span className="font-medium text-gray-700 dark:text-gray-300">
+                      Advanced analytics
+                    </span>
+                  </li>
+                  <li className="flex items-center space-x-3">
+                    <CheckCircle className="h-5 w-5 flex-shrink-0 text-green-500" />
+                    <span className="font-medium text-gray-700 dark:text-gray-300">
+                      Custom learning paths
+                    </span>
+                  </li>
+                  <li className="flex items-center space-x-3">
+                    <CheckCircle className="h-5 w-5 flex-shrink-0 text-green-500" />
+                    <span className="font-medium text-gray-700 dark:text-gray-300">
+                      Priority support
+                    </span>
+                  </li>
+                  <li className="flex items-center space-x-3">
+                    <Star className="h-5 w-5 flex-shrink-0 text-yellow-500" />
+                    <span className="font-medium text-gray-700 dark:text-gray-300">
+                      Assessment tools
+                    </span>
+                  </li>
+                </ul>
+
+                <button className="w-full rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 px-6 py-3 font-bold text-white shadow-lg transition-all duration-300 hover:scale-105 hover:from-blue-700 hover:to-purple-700">
+                  Start Free Trial
+                </button>
+              </div>
+            </div>
+
+            {/* Enterprise Plan */}
+            <div className="rounded-2xl border-2 border-gray-200 bg-white p-8 shadow-lg transition-all duration-300 hover:scale-105 hover:shadow-2xl dark:border-gray-700 dark:bg-gray-800">
+              <div className="text-center">
+                <h3 className="mb-4 text-2xl font-bold text-gray-900 dark:text-white">
+                  Enterprise
+                </h3>
+                <div className="mb-6">
+                  <span className="text-5xl font-bold text-gray-900 dark:text-white">
+                    ₹1449
+                  </span>
+                  <span className="text-gray-600 dark:text-gray-400">
+                    /month
+                  </span>
+                </div>
+                <p className="mb-8 text-gray-600 dark:text-gray-300">
+                  Complete solution for large organizations
+                </p>
+
+                <ul className="mb-8 space-y-4 text-left">
+                  <li className="flex items-center space-x-3">
+                    <CheckCircle className="h-5 w-5 flex-shrink-0 text-green-500" />
+                    <span className="font-medium text-gray-700 dark:text-gray-300">
+                      500 students
+                    </span>
+                  </li>
+                  <li className="flex items-center space-x-3">
+                    <CheckCircle className="h-5 w-5 flex-shrink-0 text-green-500" />
+                    <span className="font-medium text-gray-700 dark:text-gray-300">
+                      All features included
+                    </span>
+                  </li>
+                  <li className="flex items-center space-x-3">
+                    <CheckCircle className="h-5 w-5 flex-shrink-0 text-green-500" />
+                    <span className="font-medium text-gray-700 dark:text-gray-300">
+                      White-label options
+                    </span>
+                  </li>
+                  <li className="flex items-center space-x-3">
+                    <CheckCircle className="h-5 w-5 flex-shrink-0 text-green-500" />
+                    <span className="font-medium text-gray-700 dark:text-gray-300">
+                      API access
+                    </span>
+                  </li>
+                  <li className="flex items-center space-x-3">
+                    <CheckCircle className="h-5 w-5 flex-shrink-0 text-green-500" />
+                    <span className="font-medium text-gray-700 dark:text-gray-300">
+                      24/7 dedicated support
+                    </span>
+                  </li>
+                  <li className="flex items-center space-x-3">
+                    <Star className="h-5 w-5 flex-shrink-0 text-yellow-500" />
+                    <span className="font-medium text-gray-700 dark:text-gray-300">
+                      Custom integrations
+                    </span>
+                  </li>
+                </ul>
+
+                <button className="w-full rounded-xl bg-purple-600 px-6 py-3 font-bold text-white transition-all duration-300 hover:scale-105 hover:bg-purple-700 dark:bg-purple-700 dark:hover:bg-purple-600">
+                  Contact Sales
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-16 text-center">
+            <p className="mb-8 text-gray-600 dark:text-gray-300">
+              All plans include a 14-day free trial. No credit card required.
+            </p>
+            <div className="flex flex-col items-center justify-center space-y-4 text-sm text-gray-600 sm:flex-row sm:space-y-0 sm:space-x-8 dark:text-gray-300">
+              <div className="flex items-center space-x-2">
+                <CheckCircle className="h-4 w-4 text-green-500" />
+                <span className="font-medium">Cancel anytime</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <CheckCircle className="h-4 w-4 text-green-500" />
+                <span className="font-medium">30-day money back guarantee</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <CheckCircle className="h-4 w-4 text-green-500" />
+                <span className="font-medium">Free migration support</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </>
+  );
+};
+
+export default Pricing;
+```
+
+```tsx copy filename="app/page.tsx" 
+"use client";
+
+import CTA from "@/components/home/CTA";
+import Features from "@/components/home/Features";
+import GettingStarted from "@/components/home/GettingStarted";
+import Hero from "@/components/home/Hero";
+import Pricing from "@/components/home/Pricing";
+
+const ExamlyLanding = () => {
+  return (
+    <div className="min-h-screen overflow-hidden text-gray-900 dark:from-gray-900 dark:via-gray-900 dark:to-gray-800 dark:text-white">
+      {/* Hero Section */}
+      <Hero />
+      {/* Features Section */}
+      <Features />
+
+      {/* Pricing Section */}
+      <Pricing />
+
+      {/* Getting Started Section */}
+      <GettingStarted />
+
+      {/* CTA Section */}
+      <CTA />
+    </div>
+  );
+};
+
+export default ExamlyLanding;
+```
+
